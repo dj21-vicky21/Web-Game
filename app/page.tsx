@@ -16,6 +16,7 @@ import {
 
 import { GameMode, GameState } from "@/types";
 import { Checkbox } from "@/components/ui/checkbox";
+import { LineShadowTextComp } from "@/components/lineShadowText";
 
 const initialBoard = [
   ["r", "n", "b", "q", "k", "b", "n", "r"],
@@ -56,76 +57,171 @@ export default function Home() {
   ]);
   const [currentStep, setCurrentStep] = useState(0);
 
+  const [capturedPieces, setCapturedPieces] = useState<{
+    white: string[];
+    black: string[];
+  }>({
+    white: [],
+    black: [],
+  });
+  const [gameStatus, setGameStatus] = useState<"ongoing" | "checkmate" | null>(null);
+  const [cpuTimeoutOccurred, setCpuTimeoutOccurred] = useState(false);
+
+  // Add a state to track if a king is in check
+  const [whiteKingInCheck, setWhiteKingInCheck] = useState(false);
+  const [blackKingInCheck, setBlackKingInCheck] = useState(false);
+
   useEffect(() => {
     if (gameMode === "cpu" && currentPlayer === "black") {
-      // Add a small delay to make CPU moves feel more natural
-      const timeoutId = setTimeout(makeCPUMove, 1000);
-      return () => clearTimeout(timeoutId);
+      const timeoutId = setTimeout(() => {
+        setCpuTimeoutOccurred(true);
+        setGameStatus("checkmate");
+        setCurrentPlayer("white");
+      }, 5000);
+
+      const moveTimeoutId = setTimeout(() => {
+        makeCPUMove();
+        clearTimeout(timeoutId);
+      }, 1000);
+
+      // Cleanup function
+      return () => {
+        clearTimeout(moveTimeoutId);
+        clearTimeout(timeoutId);
+      };
     }
   }, [currentPlayer, gameMode]);
 
   const makeCPUMove = () => {
-    // Get all possible moves for black pieces
+    if (gameStatus === "checkmate" || cpuTimeoutOccurred) {
+      return;
+    }
+
     const allPossibleMoves: {
       from: { row: number; col: number };
       to: { row: number; col: number };
     }[] = [];
 
-    // Collect all possible moves for each black piece
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
         const piece = board[row][col];
         if (piece && piece === piece.toLowerCase()) {
-          // black piece
           const moves = calculatePossibleMoves(row, col);
           moves.forEach((move) => {
-            allPossibleMoves.push({
-              from: { row, col },
-              to: move,
-            });
+            if (isValidMove(row, col, move.row, move.col)) {
+              allPossibleMoves.push({
+                from: { row, col },
+                to: move,
+              });
+            }
           });
         }
       }
     }
 
     if (allPossibleMoves.length > 0) {
-      // Choose a random move from all possible moves
       const randomMove =
         allPossibleMoves[Math.floor(Math.random() * allPossibleMoves.length)];
 
-      // Execute the move
       const newBoard = board.map((row) => [...row]);
       const movingPiece = newBoard[randomMove.from.row][randomMove.from.col];
+      const capturedPiece = newBoard[randomMove.to.row][randomMove.to.col];
+
+      if (capturedPiece?.toLowerCase() === 'k') {
+        setGameStatus("checkmate");
+        setCapturedPieces(prev => {
+          const isWhiteCaptured = capturedPiece === capturedPiece.toUpperCase();
+          return {
+            white: isWhiteCaptured ? [...prev.white, capturedPiece] : prev.white,
+            black: !isWhiteCaptured ? [...prev.black, capturedPiece] : prev.black,
+          };
+        });
+        newBoard[randomMove.to.row][randomMove.to.col] = movingPiece;
+        newBoard[randomMove.from.row][randomMove.from.col] = "";
+        setBoard(newBoard);
+        return;
+      }
+
+      if (capturedPiece) {
+        setCapturedPieces(prev => {
+          const isWhiteCaptured = capturedPiece === capturedPiece.toUpperCase();
+          return {
+            white: isWhiteCaptured ? [...prev.white, capturedPiece] : prev.white,
+            black: !isWhiteCaptured ? [...prev.black, capturedPiece] : prev.black,
+          };
+        });
+      }
+
       newBoard[randomMove.to.row][randomMove.to.col] = movingPiece;
       newBoard[randomMove.from.row][randomMove.from.col] = "";
 
       const newMoves = [
         ...moves,
-        `${movingPiece === "P" ? "White → " : "CPU → "}${String.fromCharCode(97 + randomMove.from.col)}${
+        `${
+          movingPiece === movingPiece.toUpperCase() ? "White → " : "Black → "
+        }${String.fromCharCode(97 + randomMove.from.col)}${
           8 - randomMove.from.row
-        } → ${String.fromCharCode(97 + randomMove.to.col)}${
-          8 - randomMove.to.row
-        }`,
+        } → ${String.fromCharCode(97 + randomMove.to.col)}${8 - randomMove.to.row}`,
       ];
-      const newCheck = isKingInCheck(newBoard, true); // Check if white king is in check
-      // Update the game state
+      const newCheck = isKingInCheck(newBoard, true);
+
+      if (newCheck) {
+        const isCheckmated = isCheckmate(newBoard, true);
+        if (isCheckmated) {
+          setGameStatus("checkmate");
+          console.log("Checkmate detected!");
+          setCurrentPlayer(currentPlayer);
+        }
+      }
+
       setBoard(newBoard);
       setCurrentPlayer("white");
       setMoves(newMoves);
       setIsCheck(newCheck);
 
-      // Add the new state to history
-      const newState = {
+      const newState: GameState = {
         board: newBoard,
-        currentPlayer: "white",
+        currentPlayer: currentPlayer as "white" | "black",
         moves: newMoves,
         isCheck: newCheck,
       };
 
       const newHistory: GameState[] = history.slice(0, currentStep + 1);
-      //@ts-expect-error type its valid 
       setHistory([...newHistory, newState]);
       setCurrentStep(currentStep + 1);
+
+      console.log("Game Status:", gameStatus);
+      console.log("Current Player:", currentPlayer);
+      console.log("Is Check:", newCheck);
+      console.log("Is Checkmate:", isCheckmate(newBoard, true));
+      console.log("White King in Check:", whiteKingInCheck);
+      console.log("Black King in Check:", blackKingInCheck);
+
+      // Check if the opponent has any legal moves
+      const hasNoMoves = !newBoard.some((row, rowIndex) =>
+        row.some((piece, colIndex) => {
+          if (
+            piece &&
+            ((currentPlayer === "white" && piece === piece.toUpperCase()) ||
+              (currentPlayer === "black" && piece === piece.toLowerCase()))
+          ) {
+            const moves = calculatePossibleMoves(rowIndex, colIndex);
+            return moves.length > 0;
+          }
+          return false;
+        })
+      );
+
+      if (hasNoMoves) {
+        if (newCheck) {
+          setGameStatus("checkmate");
+          console.log("Checkmate! No possible moves.");
+        } else {
+          setGameStatus("stalemate");
+          console.log("Stalemate! No possible moves.");
+        }
+        setCurrentPlayer(currentPlayer);
+      }
     }
   };
 
@@ -147,6 +243,12 @@ export default function Home() {
     return symbols[piece] || "";
   };
 
+  const getPieceSymbolWithColor = (piece: string) => {
+    const symbol = getPieceSymbol(piece);
+    const isWhite = piece === piece.toUpperCase();
+    return { symbol, isWhite };
+  };
+
   // const isInBounds = (row: number, col: number) => {
   //   return row >= 0 && row < 8 && col >= 0 && col < 8;
   // };
@@ -163,6 +265,9 @@ export default function Home() {
     toRow: number,
     toCol: number
   ) => {
+    // Check if the target position is within bounds
+    if (toRow < 0 || toRow >= 8 || toCol < 0 || toCol >= 8) return false;
+
     const piece = board[fromRow][fromCol];
     const targetPiece = board[toRow][toCol];
 
@@ -171,6 +276,7 @@ export default function Home() {
     const pieceType = piece.toLowerCase();
     const isWhite = piece === piece.toUpperCase();
 
+    // Add logic for each piece type
     switch (pieceType) {
       case "p": // Pawn
         const direction = isWhite ? -1 : 1;
@@ -189,7 +295,9 @@ export default function Home() {
 
         // Capture
         if (Math.abs(fromCol - toCol) === 1 && toRow === fromRow + direction) {
-          if (targetPiece && !isSameColor(piece, targetPiece)) return true;
+          if (targetPiece && !isSameColor(piece, targetPiece)){
+            return true;
+          }
         }
         return false;
 
@@ -286,11 +394,8 @@ export default function Home() {
           testBoard[i][j] = testBoard[row][col];
           testBoard[row][col] = "";
 
-          const isWhitePiece =
-            board[row][col] === board[row][col].toUpperCase();
-          if (!isKingInCheck(testBoard, isWhitePiece)) {
-            possibleMoves.push({ row: i, col: j });
-          }
+          // Allow moves even if the king is in check
+          possibleMoves.push({ row: i, col: j });
         }
       }
     }
@@ -299,9 +404,7 @@ export default function Home() {
   };
 
   const isKingInCheck = (boardState: string[][], isWhiteKing: boolean) => {
-    // Find king position
-    let kingRow = -1,
-      kingCol = -1;
+    let kingRow = -1, kingCol = -1;
     const kingPiece = isWhiteKing ? "K" : "k";
 
     for (let row = 0; row < 8; row++) {
@@ -315,7 +418,6 @@ export default function Home() {
       if (kingRow !== -1) break;
     }
 
-    // Check if any opponent piece can capture the king
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
         const piece = boardState[row][col];
@@ -330,8 +432,31 @@ export default function Home() {
     return false;
   };
 
+  const isCheckmate = (boardState: string[][], isWhiteKing: boolean) => {
+    if (!isKingInCheck(boardState, isWhiteKing)) return false;
+
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const piece = boardState[row][col];
+        if (piece && (isWhiteKing === (piece === piece.toUpperCase()))) {
+          const possibleMoves = calculatePossibleMoves(row, col);
+          for (const move of possibleMoves) {
+            const testBoard = boardState.map(row => [...row]);
+            testBoard[move.row][move.col] = testBoard[row][col];
+            testBoard[row][col] = "";
+            if (!isKingInCheck(testBoard, isWhiteKing)) {
+              return false;
+            }
+          }
+        }
+      }
+    }
+    return true;
+  };
+
   const handleSquareClick = (row: number, col: number) => {
-    if (gameMode === "cpu" && currentPlayer === "black") return; // Prevent moves during CPU turn
+    if (gameMode === "cpu" && currentPlayer === "black") return;
+    if (gameStatus === "checkmate") return;
 
     const piece = board[row][col];
     const isWhitePiece = piece === piece.toUpperCase();
@@ -349,36 +474,80 @@ export default function Home() {
       if (possibleMoves.some((move) => move.row === row && move.col === col)) {
         const newBoard = board.map((row) => [...row]);
         const movingPiece = newBoard[selectedPiece.row][selectedPiece.col];
+        const capturedPiece = newBoard[row][col];
+
+        if (capturedPiece) {
+          setCapturedPieces((prev) => {
+            const isWhiteCaptured = capturedPiece === capturedPiece.toUpperCase();
+            return {
+              white: isWhiteCaptured ? [...prev.white, capturedPiece] : prev.white,
+              black: !isWhiteCaptured ? [...prev.black, capturedPiece] : prev.black,
+            };
+          });
+        }
+
         newBoard[row][col] = movingPiece;
         newBoard[selectedPiece.row][selectedPiece.col] = "";
 
         const newMoves = [
           ...moves,
-          `${movingPiece === "P" ? "White → " : "Black → "}${String.fromCharCode(97 + selectedPiece.col)}${
+          `${
+            movingPiece === movingPiece.toUpperCase() ? "White → " : "Black → "
+          }${String.fromCharCode(97 + selectedPiece.col)}${
             8 - selectedPiece.row
           } → ${String.fromCharCode(97 + col)}${8 - row}`,
         ];
         const newPlayer = currentPlayer === "white" ? "black" : "white";
-        const newCheck = isKingInCheck(newBoard, !isWhitePiece);
-        // Update the game state
+
+        // Update the board state first
         setBoard(newBoard);
+
+        // Check if the opponent's king is in check
+        const opponentIsWhite = !isWhitePiece;
+        const newCheck = isKingInCheck(newBoard, opponentIsWhite);
+
+        // Update check state
+        setWhiteKingInCheck(isKingInCheck(newBoard, true));
+        setBlackKingInCheck(isKingInCheck(newBoard, false));
+
+        // If in check, check for checkmate
+        if (newCheck) {
+          const isCheckmated = isCheckmate(newBoard, opponentIsWhite);
+          if (isCheckmated) {
+            setGameStatus("checkmate");
+            console.log("Checkmate detected!");
+            setCurrentPlayer(currentPlayer);
+          } else {
+            setIsCheck(true);
+          }
+        } else {
+          setIsCheck(false);
+        }
+
+        // Update the game state
         setCurrentPlayer(newPlayer);
         setMoves(newMoves);
-        setIsCheck(newCheck);
 
         // Add the new state to history
-        const newState = {
+        const newState: GameState = {
           board: newBoard,
-          currentPlayer: newPlayer,
+          currentPlayer: newPlayer as "white" | "black",
           moves: newMoves,
           isCheck: newCheck,
         };
 
-        // Remove any future states if we're not at the latest move
         const newHistory = history.slice(0, currentStep + 1);
-        //@ts-expect-error type its valid
         setHistory([...newHistory, newState]);
         setCurrentStep(currentStep + 1);
+
+        // Add console logs to debug
+        console.log("Board State:", newBoard);
+        console.log("Game Status:", gameStatus);
+        console.log("Current Player:", currentPlayer);
+        console.log("Is Check:", newCheck);
+        console.log("Is Checkmate:", isCheckmate(newBoard, opponentIsWhite));
+        console.log("White King in Check:", whiteKingInCheck);
+        console.log("Black King in Check:", blackKingInCheck);
       }
       setSelectedPiece(null);
       setPossibleMoves([]);
@@ -402,6 +571,9 @@ export default function Home() {
       },
     ]);
     setCurrentStep(0);
+    setCapturedPieces({ white: [], black: [] });
+    setGameStatus(null);
+    setCpuTimeoutOccurred(false); // Reset the timeout state
   };
 
   const handleUndo = () => {
@@ -430,32 +602,42 @@ export default function Home() {
     }
   };
 
-  const handleSetPreview = () =>{
-    console.log("first")
-    setShowPreview(prev=>!prev)
-  }
+  const handleSetPreview = () => {
+    setShowPreview((prev) => !prev);
+  };
 
   if (!gameMode) {
     return (
       <div className="min-h-screen bg-[#1a1b1e] flex items-center justify-center">
         <div className="text-center space-y-8">
-          <h1 className="text-4xl font-bold text-white mb-8">
+       <div className="mb-16">
+          <LineShadowTextComp lineshadowText="Chess game"/>
+       </div>
+          <h1 className="text-2xl sm:text-4xl font-bold text-gray-300 mb-8">
             Choose Game Mode
           </h1>
-          <div className="flex gap-4">
+          <div className="flex gap-4 justify-center flex-col sm:flex-row">
+            
             <Button
-              onClick={() => setGameMode("player")}
-              className="bg-[#2c2e33] hover:bg-[#3c3e43] text-white p-8 flex flex-col items-center gap-4 rounded-xl"
+               onClick={() => setGameMode("player")}
+              className="relative inline-flex h-12 overflow-hidden rounded-full p-[1px] focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:ring-offset-slate-50"
             >
-              <Users className="w-12 h-12" />
-              <span className="text-xl">Player vs Player</span>
+              <span className="absolute inset-[-1000%] animate-[spin_2s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,#E2CBFF_0%,#393BB2_50%,#E2CBFF_100%)]" />
+              <span className="inline-flex h-full w-full cursor-pointer items-center justify-center rounded-full bg-slate-950 px-3 py-1 text-sm font-medium text-white backdrop-blur-3xl">
+                <Users className="size-6 mr-4 text-gray-300" />
+                <span className="text-xl text-gray-300">Player vs Player</span>
+              </span>
             </Button>
+
             <Button
               onClick={() => setGameMode("cpu")}
-              className="bg-[#2c2e33] hover:bg-[#3c3e43] text-white p-8 flex flex-col items-center gap-4 rounded-xl"
+              className="relative inline-flex h-12 overflow-hidden rounded-full p-[1px] focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:ring-offset-slate-50"
             >
-              <Cpu className="w-12 h-12" />
-              <span className="text-xl">Player vs CPU</span>
+              <span className="absolute inset-[-1000%] animate-[spin_2s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,#E2CBFF_0%,#393BB2_50%,#E2CBFF_100%)]" />
+              <span className="inline-flex h-full w-full cursor-pointer items-center justify-center rounded-full bg-slate-950 px-3 py-1 text-sm font-medium text-white backdrop-blur-3xl">
+                <Cpu className="size-6 mr-4 text-gray-300" />
+                <span className="text-xl text-gray-300">Player vs CPU</span>
+              </span>
             </Button>
           </div>
         </div>
@@ -463,17 +645,55 @@ export default function Home() {
     );
   }
 
+  const verifyMoves = () => {
+   console.log(isCheckmate(board, false))
+    console.log(isKingInCheck(board, false))
+    console.log(blackKingInCheck)
+    console.log(whiteKingInCheck)
+
+  
+  }
+
   return (
     <div className="min-h-screen bg-[#1a1b1e]">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row gap-8 p-9">
-          <div className="flex-1">
-            {/* {
-              <div className="grid place-items-center font-semibold text-2xl text-white">
-                {" "}
-                {currentPlayer === "black" ? "Your turn" : "White turn"}{" "}
+          {/* Captured Pieces Display */}
+          <button onClick={verifyMoves}>
+            verify
+          </button>
+          <div className="w-20">
+            <div className="space-y-4">
+              <div className="bg-[#2c2e33] p-4 rounded-lg">
+                <h4 className="text-[#ffd700] text-sm mb-2">Black Captures</h4>
+                <div className="flex flex-wrap gap-1">
+                  {capturedPieces.white.map((piece, i) => {
+                    const { symbol } = getPieceSymbolWithColor(piece);
+                    return (
+                      <span key={i} className="text-white text-xl">
+                        {symbol}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
-            } */}
+              <div className="bg-[#2c2e33] p-4 rounded-lg">
+                <h4 className="text-[#ffd700] text-sm mb-2">White Captures</h4>
+                <div className="flex flex-wrap gap-1">
+                  {capturedPieces.black.map((piece, i) => {
+                    const { symbol } = getPieceSymbolWithColor(piece);
+                    return (
+                      <span key={i} className="text-black text-xl">
+                        {symbol}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1">
             <Card className="p-6 gap-1 bg-[#2c2e33] border-[#2c2e33]">
               <div className="grid grid-cols-8 gap-0.5 bg-[#1a1b1e] p-2 rounded-lg">
                 {board.map((row, rowIndex) =>
@@ -526,12 +746,30 @@ export default function Home() {
                 )}
               </div>
             </Card>
-            {/* {
-              <div className="grid place-items-center font-semibold text-2xl text-white">
-                {" "}
-                {currentPlayer === "white" ? "Your turn" : "Black turn"}{" "}
+            {whiteKingInCheck && (
+              <div className="mt-4 p-2 bg-red-500/20 text-red-300 rounded-md flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                <span>White King is in Check!</span>
               </div>
-            } */}
+            )}
+            {blackKingInCheck && (
+              <div className="mt-4 p-2 bg-red-500/20 text-red-300 rounded-md flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                <span>Black King is in Check!</span>
+              </div>
+            )}
+            {gameStatus === "checkmate" && (
+              <div className="mt-4 p-2 bg-[#ffd700]/20 text-[#ffd700] rounded-md flex items-center gap-2">
+                <Crown className="w-4 h-4" />
+                <span>
+                  {capturedPieces.white.includes('K')
+                    ? "Black wins! White king captured!"
+                    : capturedPieces.black.includes('k')
+                      ? "White wins! Black king captured!"
+                      : `Checkmate! ${currentPlayer === "white" ? "White" : "Black"} wins!`}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="w-full md:w-72">
@@ -591,6 +829,19 @@ export default function Home() {
                 </div>
               )}
 
+              {gameStatus === "checkmate" && (
+                <div className="mb-4 p-2 bg-[#ffd700]/20 text-[#ffd700] rounded-md flex items-center gap-2">
+                  <Crown className="w-4 h-4" />
+                  <span>
+                    {capturedPieces.white.includes('K')
+                      ? "Black wins! White king captured!"
+                      : capturedPieces.black.includes('k')
+                        ? "White wins! Black king captured!"
+                        : `Checkmate! ${currentPlayer === "white" ? "White" : "Black"} wins!`}
+                  </span>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <h3 className="font-semibold text-[#ffd700]">Move History</h3>
                 <div className="h-[400px] overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-[#ffd700]/20 scrollbar-track-transparent">
@@ -607,14 +858,18 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                    <Checkbox id="terms" className="cursor-pointer" onClick={handleSetPreview}/>
-                    <label
-                      htmlFor="terms"
-                      className="text-sm cursor-pointer font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                     Show preview
-                    </label>
-                  </div>
+                <Checkbox
+                  id="terms"
+                  className="cursor-pointer"
+                  onClick={handleSetPreview}
+                />
+                <label
+                  htmlFor="terms"
+                  className="text-sm cursor-pointer font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Show preview
+                </label>
+              </div>
             </Card>
           </div>
         </div>
