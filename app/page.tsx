@@ -53,6 +53,7 @@ export default function Home() {
       currentPlayer: "white",
       moves: [],
       isCheck: false,
+      capturedPieces: { white: [], black: [] },
     },
   ]);
   const [currentStep, setCurrentStep] = useState(0);
@@ -64,7 +65,7 @@ export default function Home() {
     white: [],
     black: [],
   });
-  const [gameStatus, setGameStatus] = useState<"ongoing" | "checkmate" | null>(null);
+  const [gameStatus, setGameStatus] = useState<"ongoing" | "checkmate" | "stalemate" | null>(null);
   const [cpuTimeoutOccurred, setCpuTimeoutOccurred] = useState(false);
 
   // Add a state to track if a king is in check
@@ -184,6 +185,7 @@ export default function Home() {
         currentPlayer: currentPlayer as "white" | "black",
         moves: newMoves,
         isCheck: newCheck,
+        capturedPieces: { ...capturedPieces },
       };
 
       const newHistory: GameState[] = history.slice(0, currentStep + 1);
@@ -456,7 +458,7 @@ export default function Home() {
 
   const handleSquareClick = (row: number, col: number) => {
     if (gameMode === "cpu" && currentPlayer === "black") return;
-    if (gameStatus === "checkmate") return;
+    if (gameStatus === "checkmate" || gameStatus === "stalemate") return;
 
     const piece = board[row][col];
     const isWhitePiece = piece === piece.toUpperCase();
@@ -475,6 +477,23 @@ export default function Home() {
         const newBoard = board.map((row) => [...row]);
         const movingPiece = newBoard[selectedPiece.row][selectedPiece.col];
         const capturedPiece = newBoard[row][col];
+
+        // Check if the captured piece is a king
+        if (capturedPiece?.toLowerCase() === 'k') {
+          setGameStatus("checkmate");
+          console.log(`${currentPlayer === "white" ? "White" : "Black"} wins! King captured.`);
+          setCapturedPieces((prev) => {
+            const isWhiteCaptured = capturedPiece === capturedPiece.toUpperCase();
+            return {
+              white: isWhiteCaptured ? [...prev.white, capturedPiece] : prev.white,
+              black: !isWhiteCaptured ? [...prev.black, capturedPiece] : prev.black,
+            };
+          });
+          newBoard[row][col] = movingPiece;
+          newBoard[selectedPiece.row][selectedPiece.col] = "";
+          setBoard(newBoard);
+          return;
+        }
 
         if (capturedPiece) {
           setCapturedPieces((prev) => {
@@ -502,30 +521,55 @@ export default function Home() {
         // Update the board state first
         setBoard(newBoard);
 
-        // Check if the opponent's king is in check
-        const opponentIsWhite = !isWhitePiece;
+        // Check for checkmate after the move
+        const opponentIsWhite = newPlayer === "white";
         const newCheck = isKingInCheck(newBoard, opponentIsWhite);
 
-        // Update check state
-        setWhiteKingInCheck(isKingInCheck(newBoard, true));
-        setBlackKingInCheck(isKingInCheck(newBoard, false));
-
-        // If in check, check for checkmate
         if (newCheck) {
           const isCheckmated = isCheckmate(newBoard, opponentIsWhite);
           if (isCheckmated) {
             setGameStatus("checkmate");
             console.log("Checkmate detected!");
-            setCurrentPlayer(currentPlayer);
           } else {
             setIsCheck(true);
+            console.log("Check detected! The king is in check.");
           }
         } else {
           setIsCheck(false);
         }
 
-        // Update the game state
-        setCurrentPlayer(newPlayer);
+        // Update check states
+        setWhiteKingInCheck(isKingInCheck(newBoard, true));
+        setBlackKingInCheck(isKingInCheck(newBoard, false));
+
+        // Check for legal moves
+        const hasLegalMoves = newBoard.some((row, rowIndex) =>
+          row.some((piece, colIndex) => {
+            if (
+              piece &&
+              ((newPlayer === "white" && piece === piece.toUpperCase()) ||
+                (newPlayer === "black" && piece === piece.toLowerCase()))
+            ) {
+              const moves = calculatePossibleMoves(rowIndex, colIndex);
+              return moves.length > 0;
+            }
+            return false;
+          })
+        );
+
+        if (!hasLegalMoves) {
+          if (newCheck) {
+            setGameStatus("checkmate");
+            console.log("Checkmate! Opponent wins.");
+          } else {
+            setGameStatus("stalemate");
+            console.log("Stalemate! No possible moves.");
+          }
+        } else {
+          // Update the game state
+          setCurrentPlayer(newPlayer);
+        }
+
         setMoves(newMoves);
 
         // Add the new state to history
@@ -534,6 +578,7 @@ export default function Home() {
           currentPlayer: newPlayer as "white" | "black",
           moves: newMoves,
           isCheck: newCheck,
+          capturedPieces: { ...capturedPieces },
         };
 
         const newHistory = history.slice(0, currentStep + 1);
@@ -568,6 +613,7 @@ export default function Home() {
         currentPlayer: "white",
         moves: [],
         isCheck: false,
+        capturedPieces: { white: [], black: [] },
       },
     ]);
     setCurrentStep(0);
@@ -793,7 +839,9 @@ export default function Home() {
                     onClick={handleUndo}
                     disabled={
                       currentStep === 0 ||
-                      (gameMode === "cpu" && currentPlayer === "black")
+                      (gameMode === "cpu" && currentPlayer === "black") ||
+                      gameStatus === "checkmate" ||
+                      gameStatus === "stalemate"
                     }
                     className="border-[#ffd700] text-[#ffd700] hover:bg-[#ffd700]/10 disabled:opacity-50"
                   >
@@ -805,7 +853,9 @@ export default function Home() {
                     onClick={handleRedo}
                     disabled={
                       currentStep === history.length - 1 ||
-                      (gameMode === "cpu" && currentPlayer === "black")
+                      (gameMode === "cpu" && currentPlayer === "black") ||
+                      gameStatus === "checkmate" ||
+                      gameStatus === "stalemate"
                     }
                     className="border-[#ffd700] text-[#ffd700] hover:bg-[#ffd700]/10 disabled:opacity-50"
                   >
