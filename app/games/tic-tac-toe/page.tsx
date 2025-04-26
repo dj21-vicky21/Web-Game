@@ -246,9 +246,9 @@ export default function TicTacToe() {
         transition={{ duration: 0.4, ease: "easeOut" }}
       >
         <div className="flex justify-between items-center mb-6">
-          <Link href="#" onClick={() => setGameStarted(false)} className="flex items-center text-white/80 hover:text-white transition">
+          <Link href={!gameStarted ? "/" : "#"} onClick={() => setGameStarted(false)} className="flex items-center text-white/80 hover:text-white transition">
             <ArrowLeftIcon className="h-5 w-5 mr-1" />
-            <span>Menu</span>
+            <span>{!gameStarted ? "Home" : "Menu"}</span>
           </Link>
           <motion.h1 
             className="text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400"

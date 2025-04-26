@@ -27,6 +27,16 @@ const games = [
     color: 'from-purple-500 to-indigo-600',
     path: '/games/tic-tac-toe', // No path yet
     disabled: false
+  },
+  {
+    id: 'memory',
+    title: 'Memory Game',
+    description: 'Test your memory by matching pairs of cards in this classic memory game.',
+    image: '🔍',
+    bgImage: '/images/coming-soon-bg.jpg',
+    color: 'from-indigo-500 to-blue-600',
+    path: '/games/memory',
+    disabled: false
   }
 ];
 
