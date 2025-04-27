@@ -97,15 +97,17 @@ export function SnakeGame() {
         break;
     }
     
-    // Check for collisions
+    // Create new snake (without removing tail yet)
+    const newSnake = [head, ...snake];
+    
+    // Check for collisions with walls
     if (
       head.x < 0 || 
       head.x >= BOARD_SIZE || 
       head.y < 0 || 
-      head.y >= BOARD_SIZE ||
-      snake.some(segment => segment.x === head.x && segment.y === head.y)
+      head.y >= BOARD_SIZE
     ) {
-      // Game over
+      // Game over due to wall collision
       setIsGameOver(true);
       if (score > highScore) {
         setHighScore(score);
@@ -113,8 +115,17 @@ export function SnakeGame() {
       return;
     }
     
-    // Create new snake
-    const newSnake = [head, ...snake];
+    // Check for collision with own body, but exclude the very tail piece
+    // since it will move out of the way (unless it ate food)
+    const snakeBody = snake.slice(0, -1);
+    if (snakeBody.some(segment => segment.x === head.x && segment.y === head.y)) {
+      // Game over due to self collision
+      setIsGameOver(true);
+      if (score > highScore) {
+        setHighScore(score);
+      }
+      return;
+    }
     
     // Check if snake ate food
     if (head.x === food.x && head.y === food.y) {
@@ -149,6 +160,7 @@ export function SnakeGame() {
       e.preventDefault();
     }
     
+    // Prevent 180-degree turns which can cause self-collision during fast inputs
     switch (e.key) {
       case 'ArrowUp':
         if (direction !== 'DOWN') setNextDirection('UP');
@@ -193,6 +205,7 @@ export function SnakeGame() {
 
   // Handle direction button clicks
   const handleDirectionChange = (newDirection: Direction) => {
+    // Ensure we can't make 180-degree turns
     if (
       (newDirection === 'UP' && direction !== 'DOWN') ||
       (newDirection === 'DOWN' && direction !== 'UP') ||
