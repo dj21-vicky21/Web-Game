@@ -57,6 +57,16 @@ const games = [
     color: 'from-red-500 to-orange-600',
     path: '/games/flappy-bird',
     disabled: false
+  },
+  {
+    id: 'tetris',
+    title: 'Tetris',
+    description: 'Classic Tetris game',
+    image: '🟦',
+    bgImage: '/images/coming-soon-bg.jpg',
+    color: 'from-red-500 to-orange-600',
+    path: '/games/tetris',
+    disabled: false
   }
 ];
 
