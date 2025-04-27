@@ -47,6 +47,16 @@ const games = [
     color: 'from-indigo-500 to-blue-600',
     path: '/games/memory',
     disabled: false
+    },
+  {
+    id: 'flappy-bird',
+    title: 'Flappy Bird',
+    description: 'Dodge pipes and fly as far as you can in this addictive game.',
+    image: '🐤',
+    bgImage: '/images/coming-soon-bg.jpg',
+    color: 'from-red-500 to-orange-600',
+    path: '/games/flappy-bird',
+    disabled: false
   }
 ];
 
