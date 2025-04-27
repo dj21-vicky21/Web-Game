@@ -19,6 +19,16 @@ const games = [
     disabled: false
   },
   {
+    id: 'snake',
+    title: 'Snake',
+    description: 'Control a snake to eat food and grow longer without hitting walls or yourself.',
+    image: '🐍',
+    bgImage: '/images/coming-soon-bg.jpg',
+    color: 'from-green-500 to-emerald-600',
+    path: '/games/snake',
+    disabled: false
+  },
+  {
     id: 'Tic Tac Toe',
     title: 'Tic Tac Toe',
     description: 'Play Tic Tac Toe against another player or challenge the CPU.',
